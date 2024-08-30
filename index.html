@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #000003;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background-color: #06109e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgb(241, 237, 237);
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        iframe, video {
+            width: 100%;
+            height: 450px;
+            border: none;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #2600ff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Disfruta del Streaming y Comparte en tu Smart TV</h1>
+        <!-- Cambia el enlace del video por el tuyo -->
+        <iframe id="video" src="http://192.168.100.6:5000/screen" allowfullscreen></iframe>
+        
+        <button id="cast-button">Transmitir a Smart TV</button>
+    </div>
+
+    <!-- Incluye la API de Google Cast -->
+    <script type="text/javascript" src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+    <script>
+        // Inicializar la API de Google Cast
+        window['__onGCastApiAvailable'] = function(isAvailable) {
+            if (isAvailable) {
+                initializeCastApi();
+            }
+        };
+
+        function initializeCastApi() {
+            cast.framework.CastContext.getInstance().setOptions({
+                receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+                autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+            });
+
+            const castButton = document.getElementById('cast-button');
+            castButton.addEventListener('click', () => {
+                const videoUrl = document.getElementById('video').src;
+                launchCast(videoUrl);
+            });
+        }
+
+        function launchCast(videoUrl) {
+            const context = cast.framework.CastContext.getInstance();
+            const session = context.getCurrentSession();
+
+            if (session) {
+                const mediaInfo = new chrome.cast.media.MediaInfo(videoUrl, 'video/mp4');
+                const request = new chrome.cast.media.LoadRequest(mediaInfo);
+
+                session.loadMedia(request).then(
+                    () => console.log('Transmitiendo a Smart TV.'),
+                    error => console.log('Error al transmitir:', error)
+                );
+            }
+        }
+    </script>
+</body>
+</html>
+
