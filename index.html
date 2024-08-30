@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Streaming</title>
+    <title>Ver Video y Compartir Pantalla</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #000003;
+            background-color: #020202;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -17,10 +17,10 @@
         }
 
         .container {
-            background-color: #06109e;
+            background-color: #01418a;
             padding: 20px;
             border-radius: 10px;
-            box-shadow: 0 0 15px rgb(241, 237, 237);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.932);
             max-width: 800px;
             width: 100%;
             text-align: center;
@@ -43,7 +43,7 @@
             padding: 10px 20px;
             font-size: 16px;
             cursor: pointer;
-            background-color: #2600ff;
+            background-color: #1900ff;
             color: #fff;
             border: none;
             border-radius: 5px;
@@ -51,57 +51,31 @@
         }
 
         button:hover {
-            background-color: #0056b3;
+            background-color: #00756c;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Disfruta del Streaming y Comparte en tu Smart TV</h1>
+        <h1>Disfruta del Streaming y Comparte tu Pantalla</h1>
         <!-- Cambia el enlace del video por el tuyo -->
-        <iframe id="video" src="http://192.168.100.6:5000/screen" allowfullscreen></iframe>
+        <iframe src="http://192.168.100.6:5000/screen" allowfullscreen></iframe>
         
-        <button id="cast-button">Transmitir a Smart TV</button>
+        <video id="screen-video" autoplay playsinline controls hidden></video>
+        <button onclick="startScreenShare()">Compartir Pantalla</button>
     </div>
 
-    <!-- Incluye la API de Google Cast -->
-    <script type="text/javascript" src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
     <script>
-        // Inicializar la API de Google Cast
-        window['__onGCastApiAvailable'] = function(isAvailable) {
-            if (isAvailable) {
-                initializeCastApi();
-            }
-        };
-
-        function initializeCastApi() {
-            cast.framework.CastContext.getInstance().setOptions({
-                receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
-                autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
-            });
-
-            const castButton = document.getElementById('cast-button');
-            castButton.addEventListener('click', () => {
-                const videoUrl = document.getElementById('video').src;
-                launchCast(videoUrl);
-            });
-        }
-
-        function launchCast(videoUrl) {
-            const context = cast.framework.CastContext.getInstance();
-            const session = context.getCurrentSession();
-
-            if (session) {
-                const mediaInfo = new chrome.cast.media.MediaInfo(videoUrl, 'video/mp4');
-                const request = new chrome.cast.media.LoadRequest(mediaInfo);
-
-                session.loadMedia(request).then(
-                    () => console.log('Transmitiendo a Smart TV.'),
-                    error => console.log('Error al transmitir:', error)
-                );
+        async function startScreenShare() {
+            try {
+                const videoElement = document.getElementById('screen-video');
+                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                videoElement.srcObject = stream;
+                videoElement.hidden = false;
+            } catch (err) {
+                console.error("Error al compartir la pantalla:", err);
             }
         }
     </script>
 </body>
 </html>
-
