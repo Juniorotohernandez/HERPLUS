@@ -10,6 +10,13 @@
   <style>
     .modal { transition: all 0.3s ease; transform: scale(0.95); opacity: 0; visibility: hidden; }
     .modal.show { transform: scale(1); opacity: 1; visibility: visible; }
+    #modalVista .bg-white {
+      background-color: #1e3a8a;
+      color: white;
+    }
+    #modalVista button {
+      background-color: #2563eb;
+    }
   </style>
 </head>
 <body class="bg-blue-950 text-white font-sans">
@@ -27,7 +34,7 @@
     <!-- Header -->
     <header class="flex justify-between items-center p-4 bg-blue-900">
       <div class="flex items-center gap-2">
-        <img src="logo.png" class="w-10" />
+        <img src="img/HERPLUS.png" class="w-10" />
         <h1 class="text-xl font-bold">HERPLUS</h1>
       </div>
       <div>
@@ -69,18 +76,18 @@
 
   <!-- Modal -->
   <div id="modalVista" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center modal z-50">
-    <div class="bg-white text-black p-6 rounded max-w-md w-full relative shadow-xl">
-      <button onclick="cerrarModal()" class="absolute top-2 right-3 text-red-600 font-bold text-lg">✖</button>
+    <div class="bg-white p-6 rounded max-w-md w-full relative shadow-xl">
+      <button onclick="cerrarModal()" class="absolute top-2 right-3 text-red-400 font-bold text-lg">✖</button>
       <img id="modalImagen" class="w-full h-48 object-cover rounded mb-3" />
       <h3 id="modalTitulo" class="text-xl font-bold mb-2"></h3>
       <p id="modalDescripcion" class="text-sm mb-2"></p>
-      <a id="modalTrailer" href="#" target="_blank" class="text-blue-600 underline text-sm">Ver trailer</a>
+      <a id="modalTrailer" href="#" target="_blank" class="text-blue-200 underline text-sm">Ver trailer</a>
       <div class="mt-4 text-center">
         <div id="peliculaContenedor" class="mt-4 hidden">
           <h4 class="font-semibold mb-2">Reproducción:</h4>
           <div id="contenedorIframe" class="aspect-video mb-4"></div>
         </div>
-        <button id="btnVerPelicula" class="bg-blue-700 text-white px-4 py-2 rounded">Ver Película Completa</button>
+        <button id="btnVerPelicula" class="text-white px-4 py-2 rounded">Ver Película Completa</button>
       </div>
     </div>
   </div>
@@ -132,7 +139,7 @@
     }
 
     function cargarContenido() {
-      db.collection("contenido").onSnapshot(snapshot => {
+      db.collection("peliculas").onSnapshot(snapshot => {
         todoContenido = [];
         snapshot.forEach(doc => todoContenido.push(doc.data()));
         renderContenido(todoContenido);
@@ -148,7 +155,7 @@
       data.forEach((item, i) => {
         const card = `
           <div class="cursor-pointer" onclick="verVista(${i})">
-            <img src="${item.imagen}" class="w-full h-40 object-cover rounded mb-1" />
+            <img src="${item.imagen}" class="w-full h-40 object-cover rounded mb-1" onerror="this.src='https://via.placeholder.com/300x200.png?text=Imagen+no+disponible';" />
             <h3 class="text-sm text-center">${item.titulo}</h3>
           </div>`;
         listado.innerHTML += card;
@@ -178,7 +185,6 @@
       const contenedor = document.getElementById("contenedorIframe");
       const player = c.pelicula.includes("<iframe") ? c.pelicula : `<iframe src="${c.pelicula}" width="100%" height="300" frameborder="0" allowfullscreen></iframe>`;
       contenedor.innerHTML = player;
-
       document.getElementById("peliculaContenedor").classList.add("hidden");
 
       document.getElementById("btnVerPelicula").onclick = () => {
