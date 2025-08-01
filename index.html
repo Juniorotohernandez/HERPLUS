@@ -5,177 +5,195 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>HERPLUS</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+  <style>
+    .modal { transition: all 0.3s ease; transform: scale(0.95); opacity: 0; visibility: hidden; }
+    .modal.show { transform: scale(1); opacity: 1; visibility: visible; }
+  </style>
 </head>
 <body class="bg-blue-950 text-white font-sans">
 
-<!-- LOGIN -->
-<div id="loginSection" class="h-screen flex flex-col items-center justify-center">
-  <h1 class="text-3xl font-bold mb-4">Bienvenido a HERPLUS</h1>
-  <input id="codigoInput" type="text" placeholder="Ingresa tu código" class="p-2 text-black rounded w-72 mb-2"/>
-  <button onclick="verificarCodigo()" class="px-4 py-2 bg-blue-600 rounded">Ingresar</button>
-  <p id="loginError" class="text-red-400 mt-2 hidden">Código inválido</p>
-</div>
+  <!-- Pantalla de ingreso -->
+  <div id="loginScreen" class="min-h-screen flex flex-col justify-center items-center p-6">
+    <h1 class="text-2xl font-bold mb-4">HERPLUS</h1>
+    <input type="text" id="codigoInput" placeholder="Ingresa tu código de acceso" class="p-2 rounded text-black w-72 mb-2" />
+    <button onclick="validarCodigo()" class="bg-blue-600 px-4 py-2 rounded">Entrar</button>
+    <p id="mensajeError" class="text-red-400 mt-2 hidden">Código inválido o cuenta inactiva.</p>
+  </div>
 
-<!-- CONTENIDO -->
-<div id="mainSection" class="hidden">
-  <!-- HEADER -->
-  <header class="bg-blue-900 px-6 py-4 flex justify-between items-center">
-    <div class="flex items-center gap-4">
-      <h1 class="text-3xl font-bold">HERPLUS</h1>
-      <span id="bienvenida" class="text-lg"></span>
-      <span id="diasRestantes" class="text-yellow-400 font-semibold"></span>
+  <!-- Pantalla principal -->
+  <div id="mainApp" class="hidden">
+    <!-- Header -->
+    <header class="flex justify-between items-center p-4 bg-blue-900">
+      <div class="flex items-center gap-2">
+        <img src="logo.png" class="w-10" />
+        <h1 class="text-xl font-bold">HERPLUS</h1>
+      </div>
+      <div>
+        🎉 Bienvenido, <span id="usuarioNombre" class="font-semibold"></span> – <span id="diasRestantes"></span> días restantes
+      </div>
+      <button onclick="cerrarSesion()" class="bg-red-600 px-3 py-1 text-sm rounded">Cerrar sesión</button>
+    </header>
+
+    <!-- Submenú -->
+    <nav class="bg-blue-800 px-4 py-2 flex gap-4 text-sm">
+      <button onclick="filtrar('todos')">Todo</button>
+      <button onclick="filtrar('pelicula')">Películas</button>
+      <button onclick="filtrar('serie')">Series</button>
+      <button onclick="filtrar('tv')">TV en Vivo</button>
+    </nav>
+
+    <!-- Alerta vencimiento -->
+    <div id="alertaVencimiento" class="hidden bg-yellow-400 text-black text-center p-2">
+      ⚠️ Tu cuenta se desactiva en 3 días. Contacta a tu proveedor para renovar.
     </div>
-    <button onclick="cerrarSesion()" class="px-4 py-1 bg-red-600 rounded">Cerrar sesión</button>
-  </header>
 
-  <!-- ALERTA 3 DÍAS -->
-  <div id="aviso3Dias" class="bg-yellow-500 text-black text-center py-2 font-semibold hidden">
-    ⚠️ ¡Tu cuenta está por expirar! Ponte en contacto con tu proveedor para renovar y seguir disfrutando de todo el contenido solo en HERPLUS.
+    <!-- Buscador -->
+    <div class="p-4">
+      <input type="text" id="buscador" oninput="buscarContenido()" placeholder="Buscar contenido..." class="w-full p-2 text-black rounded"/>
+    </div>
+
+    <!-- Carrusel -->
+    <section class="p-4">
+      <h2 class="text-lg font-semibold mb-2">Recién subidos</h2>
+      <div id="carrusel" class="flex gap-4 overflow-x-auto"></div>
+    </section>
+
+    <!-- Contenido -->
+    <section class="p-4">
+      <h2 class="text-lg font-semibold mb-2">Todo el contenido</h2>
+      <div id="listado" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"></div>
+    </section>
   </div>
 
-  <!-- MENÚ -->
-  <nav class="bg-blue-800 p-4 flex gap-4 justify-center">
-    <button onclick="filtrarCategoria('Películas')" class="bg-blue-600 px-4 py-1 rounded">Películas</button>
-    <button onclick="filtrarCategoria('Series')" class="bg-blue-600 px-4 py-1 rounded">Series</button>
-    <button onclick="filtrarCategoria('TV en vivo')" class="bg-blue-600 px-4 py-1 rounded">TV en vivo</button>
-  </nav>
-
-  <!-- BUSCADOR -->
-  <div class="p-6 flex justify-center">
-    <input id="searchInput" type="text" oninput="filtrarPeliculas()" placeholder="Buscar..." class="p-2 rounded text-black w-1/2" />
+  <!-- Modal -->
+  <div id="modalVista" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center modal z-50">
+    <div class="bg-white text-black p-6 rounded max-w-md w-full relative shadow-xl">
+      <button onclick="cerrarModal()" class="absolute top-2 right-3 text-red-600 font-bold text-lg">✖</button>
+      <img id="modalImagen" class="w-full h-48 object-cover rounded mb-3" />
+      <h3 id="modalTitulo" class="text-xl font-bold mb-2"></h3>
+      <p id="modalDescripcion" class="text-sm mb-2"></p>
+      <a id="modalTrailer" href="#" target="_blank" class="text-blue-600 underline text-sm">Ver trailer</a>
+      <div class="mt-4 text-center">
+        <div id="peliculaContenedor" class="mt-4 hidden">
+          <h4 class="font-semibold mb-2">Reproducción:</h4>
+          <div id="contenedorIframe" class="aspect-video mb-4"></div>
+        </div>
+        <button id="btnVerPelicula" class="bg-blue-700 text-white px-4 py-2 rounded">Ver Película Completa</button>
+      </div>
+    </div>
   </div>
 
-  <!-- CARRUSEL -->
-  <section class="px-6">
-    <h2 class="text-xl mb-2">🎬 Recién Subidas</h2>
-    <div id="carrusel" class="overflow-x-auto whitespace-nowrap"></div>
-  </section>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyD_v8yXx1W6zcGFXXMHeNJh0RSzbnO-j84",
+      authDomain: "herplus.firebaseapp.com",
+      projectId: "herplus",
+      storageBucket: "herplus.firebasestorage.app",
+      messagingSenderId: "556494279952",
+      appId: "1:556494279952:web:f788776f50840b28434195"
+    };
 
-  <!-- CONTENIDO -->
-  <section class="p-6">
-    <div id="contenido" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"></div>
-  </section>
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
 
-  <!-- REPRODUCTOR -->
-  <div id="reproductorContainer" class="fixed inset-0 bg-black bg-opacity-90 z-50 hidden flex flex-col items-center justify-center p-4">
-    <button onclick="cerrarReproductor()" class="mb-4 text-white bg-red-600 px-4 py-2 rounded">Cerrar</button>
-    <div id="reproductor" class="w-full max-w-4xl aspect-video"></div>
-  </div>
-</div>
+    let usuarioGlobal = {};
+    let todoContenido = [];
 
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyD_v8yXx1W6zcGFXXMHeNJh0RSzbnO-j84",
-    authDomain: "herplus.firebaseapp.com",
-    projectId: "herplus",
-    storageBucket: "herplus.firebasestorage.app",
-    messagingSenderId: "556494279952",
-    appId: "1:556494279952:web:f788776f50840b28434195"
-  };
+    async function validarCodigo() {
+      const codigo = document.getElementById("codigoInput").value.trim();
+      const query = await db.collection("clientes").where("codigo", "==", codigo).get();
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
+      if (!query.empty) {
+        const user = query.docs[0].data();
+        if (user.activo) {
+          usuarioGlobal = user;
+          document.getElementById("loginScreen").classList.add("hidden");
+          document.getElementById("mainApp").classList.remove("hidden");
+          document.getElementById("usuarioNombre").textContent = user.nombre;
+          document.getElementById("diasRestantes").textContent = user.meses * 30;
 
-  let usuarioActivo = null;
-  let peliculas = [];
+          if ((user.meses * 30) <= 3) {
+            document.getElementById("alertaVencimiento").classList.remove("hidden");
+          }
 
-  async function verificarCodigo() {
-    const codigo = document.getElementById("codigoInput").value.trim();
-    const snap = await db.collection("clientes").where("codigo", "==", codigo).get();
-
-    if (snap.empty) {
-      document.getElementById("loginError").classList.remove("hidden");
-      return;
+          cargarContenido();
+        } else {
+          document.getElementById("mensajeError").classList.remove("hidden");
+        }
+      } else {
+        document.getElementById("mensajeError").classList.remove("hidden");
+      }
     }
 
-    usuarioActivo = snap.docs[0].data();
-    usuarioActivo.id = snap.docs[0].id;
-
-    const fechaRegistro = usuarioActivo.registro ? new Date(usuarioActivo.registro.seconds * 1000) : new Date();
-    const fechaFinal = new Date(fechaRegistro);
-    fechaFinal.setMonth(fechaFinal.getMonth() + parseInt(usuarioActivo.meses));
-    const hoy = new Date();
-    const diffDias = Math.ceil((fechaFinal - hoy) / (1000 * 60 * 60 * 24));
-
-    document.getElementById("bienvenida").innerText = `Hola, ${usuarioActivo.nombre}`;
-    document.getElementById("diasRestantes").innerText = `| ${diffDias} días restantes`;
-
-    if (diffDias <= 3) document.getElementById("aviso3Dias").classList.remove("hidden");
-
-    document.getElementById("loginSection").classList.add("hidden");
-    document.getElementById("mainSection").classList.remove("hidden");
-
-    cargarPeliculas();
-  }
-
-  function cerrarSesion() {
-    location.reload();
-  }
-
-  async function cargarPeliculas() {
-    const snap = await db.collection("peliculas").get();
-    peliculas = snap.docs.map(doc => doc.data());
-    mostrarCarrusel();
-    mostrarPeliculas(peliculas);
-  }
-
-  function mostrarCarrusel() {
-    const carrusel = document.getElementById("carrusel");
-    carrusel.innerHTML = "";
-    peliculas.slice(-5).reverse().forEach(p => {
-      const item = document.createElement("div");
-      item.className = "inline-block mr-4 w-[180px] bg-blue-700 rounded-xl cursor-pointer";
-      item.innerHTML = `<img src="https://placehold.co/300x450?text=${encodeURIComponent(p.titulo)}" class="rounded-t-xl w-full">
-                        <div class="p-2 text-sm font-semibold truncate">${p.titulo}</div>`;
-      item.onclick = () => abrirReproductor(p.pelicula);
-      carrusel.appendChild(item);
-    });
-  }
-
-  function mostrarPeliculas(lista) {
-    const cont = document.getElementById("contenido");
-    cont.innerHTML = "";
-    lista.forEach(p => {
-      const card = document.createElement("div");
-      card.className = "bg-blue-800 rounded-xl overflow-hidden shadow cursor-pointer";
-      card.innerHTML = `<img src="https://placehold.co/300x450?text=${encodeURIComponent(p.titulo)}" />
-                        <div class="p-2">
-                          <h3 class="text-sm font-bold truncate">${p.titulo}</h3>
-                          <p class="text-xs text-blue-300">${p.categoria}</p>
-                        </div>`;
-      card.onclick = () => abrirReproductor(p.pelicula);
-      cont.appendChild(card);
-    });
-  }
-
-  function abrirReproductor(link) {
-    const cont = document.getElementById("reproductor");
-    document.getElementById("reproductorContainer").classList.remove("hidden");
-    if (link.includes("<iframe")) {
-      cont.innerHTML = link;
-    } else {
-      cont.innerHTML = `<iframe src="${link}" class="w-full h-full" frameborder="0" allowfullscreen></iframe>`;
+    function cerrarSesion() {
+      location.reload();
     }
-  }
 
-  function cerrarReproductor() {
-    document.getElementById("reproductorContainer").classList.add("hidden");
-    document.getElementById("reproductor").innerHTML = "";
-  }
+    function cargarContenido() {
+      db.collection("contenido").onSnapshot(snapshot => {
+        todoContenido = [];
+        snapshot.forEach(doc => todoContenido.push(doc.data()));
+        renderContenido(todoContenido);
+      });
+    }
 
-  function filtrarPeliculas() {
-    const q = document.getElementById("searchInput").value.toLowerCase();
-    const filtradas = peliculas.filter(p => p.titulo.toLowerCase().includes(q));
-    mostrarPeliculas(filtradas);
-  }
+    function renderContenido(data) {
+      const listado = document.getElementById("listado");
+      const carrusel = document.getElementById("carrusel");
+      listado.innerHTML = "";
+      carrusel.innerHTML = "";
 
-  function filtrarCategoria(cat) {
-    const filtradas = peliculas.filter(p => p.categoria.toLowerCase() === cat.toLowerCase());
-    mostrarPeliculas(filtradas);
-  }
-</script>
+      data.forEach((item, i) => {
+        const card = `
+          <div class="cursor-pointer" onclick="verVista(${i})">
+            <img src="${item.imagen}" class="w-full h-40 object-cover rounded mb-1" />
+            <h3 class="text-sm text-center">${item.titulo}</h3>
+          </div>`;
+        listado.innerHTML += card;
+        if (i < 5) carrusel.innerHTML += card;
+      });
+    }
+
+    function buscarContenido() {
+      const texto = document.getElementById("buscador").value.toLowerCase();
+      const filtrado = todoContenido.filter(c => c.titulo.toLowerCase().includes(texto));
+      renderContenido(filtrado);
+    }
+
+    function filtrar(seccion) {
+      if (seccion === "todos") return renderContenido(todoContenido);
+      const filtrado = todoContenido.filter(c => c.seccion === seccion);
+      renderContenido(filtrado);
+    }
+
+    function verVista(i) {
+      const c = todoContenido[i];
+      document.getElementById("modalTitulo").textContent = c.titulo;
+      document.getElementById("modalDescripcion").textContent = c.descripcion;
+      document.getElementById("modalImagen").src = c.imagen;
+      document.getElementById("modalTrailer").href = c.trailer;
+
+      const contenedor = document.getElementById("contenedorIframe");
+      const player = c.pelicula.includes("<iframe") ? c.pelicula : `<iframe src="${c.pelicula}" width="100%" height="300" frameborder="0" allowfullscreen></iframe>`;
+      contenedor.innerHTML = player;
+
+      document.getElementById("peliculaContenedor").classList.add("hidden");
+
+      document.getElementById("btnVerPelicula").onclick = () => {
+        document.getElementById("peliculaContenedor").classList.remove("hidden");
+      };
+
+      document.getElementById("modalVista").classList.add("show");
+    }
+
+    function cerrarModal() {
+      document.getElementById("modalVista").classList.remove("show");
+    }
+  </script>
 </body>
 </html>
+
+
 
