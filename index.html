@@ -1,81 +1,181 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ver Video y Compartir Pantalla</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #020202;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-
-        .container {
-            background-color: #01418a;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 15px rgba(255, 255, 255, 0.932);
-            max-width: 800px;
-            width: 100%;
-            text-align: center;
-        }
-
-        h1 {
-            font-size: 24px;
-            margin-bottom: 20px;
-        }
-
-        iframe, video {
-            width: 100%;
-            height: 450px;
-            border: none;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            background-color: #1900ff;
-            color: #fff;
-            border: none;
-            border-radius: 5px;
-            transition: background-color 0.3s ease;
-        }
-
-        button:hover {
-            background-color: #00756c;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>HERPLUS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 </head>
-<body>
-    <div class="container">
-        <h1>Disfruta del Streaming y Comparte tu Pantalla</h1>
-        <!-- Cambia el enlace del video por el tuyo -->
-        <iframe src="http://192.168.100.6:5000/screen" allowfullscreen></iframe>
-        
-        <video id="screen-video" autoplay playsinline controls hidden></video>
-        <button onclick="startScreenShare()">Compartir Pantalla</button>
-    </div>
+<body class="bg-blue-950 text-white font-sans">
 
-    <script>
-        async function startScreenShare() {
-            try {
-                const videoElement = document.getElementById('screen-video');
-                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                videoElement.srcObject = stream;
-                videoElement.hidden = false;
-            } catch (err) {
-                console.error("Error al compartir la pantalla:", err);
-            }
-        }
-    </script>
+<!-- LOGIN -->
+<div id="loginSection" class="h-screen flex flex-col items-center justify-center">
+  <h1 class="text-3xl font-bold mb-4">Bienvenido a HERPLUS</h1>
+  <input id="codigoInput" type="text" placeholder="Ingresa tu código" class="p-2 text-black rounded w-72 mb-2"/>
+  <button onclick="verificarCodigo()" class="px-4 py-2 bg-blue-600 rounded">Ingresar</button>
+  <p id="loginError" class="text-red-400 mt-2 hidden">Código inválido</p>
+</div>
+
+<!-- CONTENIDO -->
+<div id="mainSection" class="hidden">
+  <!-- HEADER -->
+  <header class="bg-blue-900 px-6 py-4 flex justify-between items-center">
+    <div class="flex items-center gap-4">
+      <h1 class="text-3xl font-bold">HERPLUS</h1>
+      <span id="bienvenida" class="text-lg"></span>
+      <span id="diasRestantes" class="text-yellow-400 font-semibold"></span>
+    </div>
+    <button onclick="cerrarSesion()" class="px-4 py-1 bg-red-600 rounded">Cerrar sesión</button>
+  </header>
+
+  <!-- ALERTA 3 DÍAS -->
+  <div id="aviso3Dias" class="bg-yellow-500 text-black text-center py-2 font-semibold hidden">
+    ⚠️ ¡Tu cuenta está por expirar! Ponte en contacto con tu proveedor para renovar y seguir disfrutando de todo el contenido solo en HERPLUS.
+  </div>
+
+  <!-- MENÚ -->
+  <nav class="bg-blue-800 p-4 flex gap-4 justify-center">
+    <button onclick="filtrarCategoria('Películas')" class="bg-blue-600 px-4 py-1 rounded">Películas</button>
+    <button onclick="filtrarCategoria('Series')" class="bg-blue-600 px-4 py-1 rounded">Series</button>
+    <button onclick="filtrarCategoria('TV en vivo')" class="bg-blue-600 px-4 py-1 rounded">TV en vivo</button>
+  </nav>
+
+  <!-- BUSCADOR -->
+  <div class="p-6 flex justify-center">
+    <input id="searchInput" type="text" oninput="filtrarPeliculas()" placeholder="Buscar..." class="p-2 rounded text-black w-1/2" />
+  </div>
+
+  <!-- CARRUSEL -->
+  <section class="px-6">
+    <h2 class="text-xl mb-2">🎬 Recién Subidas</h2>
+    <div id="carrusel" class="overflow-x-auto whitespace-nowrap"></div>
+  </section>
+
+  <!-- CONTENIDO -->
+  <section class="p-6">
+    <div id="contenido" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"></div>
+  </section>
+
+  <!-- REPRODUCTOR -->
+  <div id="reproductorContainer" class="fixed inset-0 bg-black bg-opacity-90 z-50 hidden flex flex-col items-center justify-center p-4">
+    <button onclick="cerrarReproductor()" class="mb-4 text-white bg-red-600 px-4 py-2 rounded">Cerrar</button>
+    <div id="reproductor" class="w-full max-w-4xl aspect-video"></div>
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyD_v8yXx1W6zcGFXXMHeNJh0RSzbnO-j84",
+    authDomain: "herplus.firebaseapp.com",
+    projectId: "herplus",
+    storageBucket: "herplus.firebasestorage.app",
+    messagingSenderId: "556494279952",
+    appId: "1:556494279952:web:f788776f50840b28434195"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let usuarioActivo = null;
+  let peliculas = [];
+
+  async function verificarCodigo() {
+    const codigo = document.getElementById("codigoInput").value.trim();
+    const snap = await db.collection("clientes").where("codigo", "==", codigo).get();
+
+    if (snap.empty) {
+      document.getElementById("loginError").classList.remove("hidden");
+      return;
+    }
+
+    usuarioActivo = snap.docs[0].data();
+    usuarioActivo.id = snap.docs[0].id;
+
+    const fechaRegistro = usuarioActivo.registro ? new Date(usuarioActivo.registro.seconds * 1000) : new Date();
+    const fechaFinal = new Date(fechaRegistro);
+    fechaFinal.setMonth(fechaFinal.getMonth() + parseInt(usuarioActivo.meses));
+    const hoy = new Date();
+    const diffDias = Math.ceil((fechaFinal - hoy) / (1000 * 60 * 60 * 24));
+
+    document.getElementById("bienvenida").innerText = `Hola, ${usuarioActivo.nombre}`;
+    document.getElementById("diasRestantes").innerText = `| ${diffDias} días restantes`;
+
+    if (diffDias <= 3) document.getElementById("aviso3Dias").classList.remove("hidden");
+
+    document.getElementById("loginSection").classList.add("hidden");
+    document.getElementById("mainSection").classList.remove("hidden");
+
+    cargarPeliculas();
+  }
+
+  function cerrarSesion() {
+    location.reload();
+  }
+
+  async function cargarPeliculas() {
+    const snap = await db.collection("peliculas").get();
+    peliculas = snap.docs.map(doc => doc.data());
+    mostrarCarrusel();
+    mostrarPeliculas(peliculas);
+  }
+
+  function mostrarCarrusel() {
+    const carrusel = document.getElementById("carrusel");
+    carrusel.innerHTML = "";
+    peliculas.slice(-5).reverse().forEach(p => {
+      const item = document.createElement("div");
+      item.className = "inline-block mr-4 w-[180px] bg-blue-700 rounded-xl cursor-pointer";
+      item.innerHTML = `<img src="https://placehold.co/300x450?text=${encodeURIComponent(p.titulo)}" class="rounded-t-xl w-full">
+                        <div class="p-2 text-sm font-semibold truncate">${p.titulo}</div>`;
+      item.onclick = () => abrirReproductor(p.pelicula);
+      carrusel.appendChild(item);
+    });
+  }
+
+  function mostrarPeliculas(lista) {
+    const cont = document.getElementById("contenido");
+    cont.innerHTML = "";
+    lista.forEach(p => {
+      const card = document.createElement("div");
+      card.className = "bg-blue-800 rounded-xl overflow-hidden shadow cursor-pointer";
+      card.innerHTML = `<img src="https://placehold.co/300x450?text=${encodeURIComponent(p.titulo)}" />
+                        <div class="p-2">
+                          <h3 class="text-sm font-bold truncate">${p.titulo}</h3>
+                          <p class="text-xs text-blue-300">${p.categoria}</p>
+                        </div>`;
+      card.onclick = () => abrirReproductor(p.pelicula);
+      cont.appendChild(card);
+    });
+  }
+
+  function abrirReproductor(link) {
+    const cont = document.getElementById("reproductor");
+    document.getElementById("reproductorContainer").classList.remove("hidden");
+    if (link.includes("<iframe")) {
+      cont.innerHTML = link;
+    } else {
+      cont.innerHTML = `<iframe src="${link}" class="w-full h-full" frameborder="0" allowfullscreen></iframe>`;
+    }
+  }
+
+  function cerrarReproductor() {
+    document.getElementById("reproductorContainer").classList.add("hidden");
+    document.getElementById("reproductor").innerHTML = "";
+  }
+
+  function filtrarPeliculas() {
+    const q = document.getElementById("searchInput").value.toLowerCase();
+    const filtradas = peliculas.filter(p => p.titulo.toLowerCase().includes(q));
+    mostrarPeliculas(filtradas);
+  }
+
+  function filtrarCategoria(cat) {
+    const filtradas = peliculas.filter(p => p.categoria.toLowerCase() === cat.toLowerCase());
+    mostrarPeliculas(filtradas);
+  }
+</script>
 </body>
 </html>
+
