@@ -99,38 +99,87 @@
   function validarCodigo() {
     const codigo = document.getElementById("codigoInput").value.trim();
     db.collection("clientes").where("codigo", "==", codigo).get().then(snapshot => {
-      if (snapshot.empty) return mostrarError();
+      if (snapshot.empty) return mostrarError("Código inválido o cuenta inactiva.");
       const doc = snapshot.docs[0];
       const data = doc.data();
-      if (!data.activo) return mostrarError();
+      
+      // Verifica si el usuario está activo
+      if (!data.activo) return mostrarError("Cuenta inactiva.");
+      
+      // Verifica las pantallas disponibles
+      if (data.pantallas <= 0) {
+        return mostrarError("No tienes pantallas disponibles. Contacta a tu proveedor.");
+      }
+
+      // Calcula los días restantes
       const fechaRegistro = data.fechaRegistro?.toDate?.() || new Date();
       const diasRestantes = Math.max(0, (data.meses * 30) - Math.floor((Date.now() - fechaRegistro.getTime()) / (1000 * 60 * 60 * 24)));
-      if (diasRestantes <= 0) return mostrarError();
+      if (diasRestantes <= 0) return mostrarError("Tu cuenta ha expirado.");
+      
+      // Si todo es correcto, guarda los datos del usuario y continúa con el inicio de sesión
       usuarioActivo = { ...data, id: doc.id, diasRestantes };
       sessionStorage.setItem("usuario", JSON.stringify(usuarioActivo));
       iniciarSesion();
     });
   }
 
-  function mostrarError() {
+  function mostrarError(mensaje) {
+    document.getElementById("errorMsg").textContent = mensaje;
     document.getElementById("errorMsg").classList.remove("hidden");
   }
 
   function iniciarSesion() {
     document.getElementById("loginModal").classList.add("hidden");
     document.getElementById("userInfo").textContent = `${usuarioActivo.nombre} • ${usuarioActivo.diasRestantes} día(s) restantes`;
+    
+    // Actualiza los días restantes cada 24 horas
+    setInterval(actualizarDiasRestantes, 86400000); // 86400000 ms = 1 día
+    
     if (usuarioActivo.diasRestantes <= 3) {
       document.getElementById("alertaMsg").textContent = "⚠️ Tu cuenta está por vencer. Contacta a tu proveedor.";
       document.getElementById("alertaMsg").classList.remove("hidden");
     }
+
+    // Verifica la cantidad de pantallas disponibles
+    if (usuarioActivo.pantallas > 0) {
+      console.log(`Pantallas disponibles: ${usuarioActivo.pantallas}`);
+    } else {
+      alert("No tienes pantallas disponibles.");
+    }
+    
     cargarContenido();
   }
 
-  function cerrarSesion() {
-    sessionStorage.removeItem("usuario");
-    location.reload();
+  // Función para actualizar los días restantes
+  function actualizarDiasRestantes() {
+    if (usuarioActivo) {
+      const fechaRegistro = usuarioActivo.fechaRegistro?.toDate?.() || new Date();
+      const diasRestantes = Math.max(0, (usuarioActivo.meses * 30) - Math.floor((Date.now() - fechaRegistro.getTime()) / (1000 * 60 * 60 * 24)));
+      usuarioActivo.diasRestantes = diasRestantes;
+      
+      // Actualiza la información del usuario en la interfaz
+      document.getElementById("userInfo").textContent = `${usuarioActivo.nombre} • ${usuarioActivo.diasRestantes} día(s) restantes`;
+      
+      // Si los días restantes son menores o iguales a 3, muestra la advertencia
+      if (usuarioActivo.diasRestantes <= 3) {
+          document.getElementById("alertaMsg").textContent = "⚠️ Tu cuenta está por vencer. Contacta a tu proveedor.";
+          document.getElementById("alertaMsg").classList.remove("hidden");
+      }
+    }
   }
 
+  // Función de cerrar sesión corregida
+  function cerrarSesion() {
+    // Elimina el usuario de la sesión
+    sessionStorage.removeItem("usuario");
+
+    // Oculta la información del usuario en la interfaz
+    document.getElementById("userInfo").textContent = "";
+    document.getElementById("alertaMsg").classList.add("hidden");
+
+    // Muestra el modal de login nuevamente
+    document.getElementById("loginModal").classList.remove("hidden");
+  }
   function cargarContenido() {
     db.collection("peliculas").get().then(snapshot => {
       todasLasPeliculas = snapshot.docs.map(doc => doc.data());
@@ -151,7 +200,7 @@
     for (let cat in secciones) {
       const div = document.createElement("div");
       div.innerHTML = `<h2 class="text-lg font-bold text-blue-300 mb-2">${cat}</h2><div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">` +
-        secciones[cat].map(p => `
+        secciones[cat].map(p => ` 
           <div class="movie cursor-pointer" onclick='mostrarModal(${JSON.stringify(p)})'>
             <img src="${p.imagen}" class="rounded shadow w-full">
             <p class="mt-1 text-sm text-center">${p.titulo}</p>
@@ -238,6 +287,7 @@
 </script>
 </body>
 </html>
+
 
 
 
