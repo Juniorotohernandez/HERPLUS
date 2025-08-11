@@ -19,8 +19,6 @@
     .modal-layer { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
     .modal-bg { position:absolute; inset:0; background: rgba(0,0,0,0.9); }
     .modal-content { position:relative; width:100%; height:100%; }
-
-    /* Posters uniformes en carouseles */
     :root { --poster-w: 180px; }
     @media (max-width: 480px) { :root { --poster-w: 140px; } }
     .poster { width: var(--poster-w); }
@@ -69,19 +67,16 @@
 
 <!-- Contenido principal -->
 <main class="p-4 space-y-6">
-  <!-- ⏯️ Seguir viendo -->
   <section id="seguirViendoSection" class="hidden">
     <h2 class="text-lg font-bold text-blue-300 mb-2">⏯️ Seguir viendo</h2>
     <div id="seguirViendoCarousel" class="flex gap-4 overflow-x-auto pb-2"></div>
   </section>
 
-  <!-- ⭐ Favoritos -->
   <section id="favoritosSection" class="hidden">
     <h2 class="text-lg font-bold text-blue-300 mb-2">⭐ Tus favoritos</h2>
     <div id="favoritosCarousel" class="flex gap-4 overflow-x-auto pb-2"></div>
   </section>
 
-  <!-- Resto de secciones por categoría -->
   <section>
     <div id="contenedorSecciones" class="space-y-6"></div>
   </section>
@@ -106,6 +101,11 @@
   const cacheById = new Map();
   let unsubFavoritos = null;
   let unsubProgreso = null;
+
+  // Timers globales
+  let hbTimer = null;
+  let uiTickTimer = null;
+  let midnightTickTimer = null;
 
   // ===== Utilidades (iframes/URLs) =====
   function extraerSrcDeIframe(html) { const m = /src=["']([^"']+)["']/i.exec(html); return m ? m[1] : ""; }
@@ -136,15 +136,72 @@
     em.classList.remove("hidden");
   }
 
-  // ===== Días restantes =====
-  function getDiasRestantes() { if (!usuarioActivo?.expiryAt) return 0; return Math.max(0, Math.ceil((usuarioActivo.expiryAt - Date.now()) / 86400000)); }
-  function pintarUserInfo() { document.getElementById("userInfo").textContent = `${usuarioActivo.nombre} • ${getDiasRestantes()} día(s) restantes`; }
-  function showWarn() { const a = document.getElementById("alertaMsg"); a.textContent = "⚠️ Tu cuenta está por vencer. Contacta a tu proveedor."; a.classList.remove("hidden"); }
+  // ===== DÍAS RESTANTES (cálculo por calendario) =====
+  function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
+  function diasRestantesPorCalendario() {
+    if (!usuarioActivo?.expiryAt) return 0;
+    const hoy = startOfDay(new Date());
+    const vence = startOfDay(new Date(usuarioActivo.expiryAt));
+    const diff = Math.floor((vence - hoy) / 86400000);
+    return Math.max(0, diff);
+  }
+  function pintarUserInfo() {
+    if (!usuarioActivo) return;
+    const d = diasRestantesPorCalendario();
+    const txt = `${usuarioActivo.nombre} • ${d} ${d===1 ? 'día' : 'días'} restantes`;
+    document.getElementById("userInfo").textContent = txt;
+  }
+  function showWarn() {
+    const a = document.getElementById("alertaMsg");
+    a.textContent = "⚠️ Tu cuenta está por vencer. Contacta a tu proveedor.";
+    a.classList.remove("hidden");
+  }
+
+  // ===== Sincronizar días restantes en Firestore (con anti-spam) =====
+  let lastDiasWritten = null;
+  async function syncDiasRestantesToFirestore(force = false) {
+    if (!usuarioActivo?.id) return;
+    const d = diasRestantesPorCalendario();
+    if (!force && d === lastDiasWritten) return;
+    lastDiasWritten = d;
+    try {
+      await db.collection('clientes').doc(usuarioActivo.id).set({
+        diasRestantes: d,
+        venceEl: new Date(usuarioActivo.expiryAt)
+      }, { merge: true });
+    } catch (e) {
+      console.warn('No se pudo sincronizar diasRestantes:', e);
+    }
+  }
+
+  function actualizarDiasRestantesUI() {
+    if (!usuarioActivo) return;
+    const d = diasRestantesPorCalendario();
+    pintarUserInfo();
+    if (d <= 3) showWarn();
+    syncDiasRestantesToFirestore(); // escribe solo si cambió
+    if (d <= 0) {
+      alert("Tu cuenta ha expirado.");
+      cerrarSesion();
+    }
+  }
+  function scheduleMidnightTick() {
+    if (midnightTickTimer) clearTimeout(midnightTickTimer);
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24,0,0,0); // siguiente 00:00 local
+    const ms = nextMidnight - now;
+    midnightTickTimer = setTimeout(() => {
+      actualizarDiasRestantesUI();     // recalcula UI
+      syncDiasRestantesToFirestore(true); // fuerza escritura al cambiar de día
+      scheduleMidnightTick();          // reprograma
+    }, ms + 500);
+  }
 
   // ===== Sesiones (pantallas) =====
-  const HEARTBEAT_MS = 30_000;          // lateo cada 30s
-  const SESSION_TTL_MS = 3 * 60_000;    // expira a los ~3min
-  let sesionRef = null, hbTimer = null, focusHandlersOn = false;
+  const HEARTBEAT_MS = 30_000;
+  const SESSION_TTL_MS = 3 * 60_000;
+  let sesionRef = null, focusHandlersOn = false;
 
   function deviceId(){
     try {
@@ -160,7 +217,6 @@
       .collection('sesiones').where('lastSeen','>=', cutoff).get();
     const cupo = cliente.pantallas || 1;
     if (snap.size < cupo) return true;
-    // permitir reingreso si es el mismo dispositivo
     return snap.docs.some(d => d.id === deviceId());
   }
 
@@ -205,7 +261,6 @@
     sesionRef = null;
   }
 
-  // Marcar qué se está viendo
   function marcarViendoPelicula(p){
     sesionRef?.update({
       playerOpen: true,
@@ -242,14 +297,21 @@
       if ((data.pantallas ?? 0) <= 0) return mostrarError("No tienes pantallas disponibles. Contacta a tu proveedor.");
 
       const fechaRegistro = data.fechaRegistro?.toDate?.() ?? new Date();
-      const expiryAt = fechaRegistro.getTime() + (data.meses * 30 * 24 * 60 * 60 * 1000);
-      if (expiryAt <= Date.now()) return mostrarError("Tu cuenta ha expirado.");
+      const venceTS = data.venceEl?.toDate?.()?.getTime?.() || (fechaRegistro.getTime() + ((Number(data.meses)||0) * 30 * 24 * 60 * 60 * 1000));
+      if (venceTS <= Date.now()) return mostrarError("Tu cuenta ha expirado.");
 
       const okPantallas = await puedeIniciarSesion({ id: doc.id, pantallas: data.pantallas });
       if (!okPantallas) return mostrarError("Has alcanzado el límite de pantallas activas.");
 
-      usuarioActivo = { id: doc.id, nombre: data.nombre ?? "Usuario", pantallas: data.pantallas ?? 0, expiryAt };
+      usuarioActivo = { id: doc.id, nombre: data.nombre ?? "Usuario", pantallas: data.pantallas ?? 0, expiryAt: venceTS };
       sessionStorage.setItem("usuario", JSON.stringify(usuarioActivo));
+
+      // Sincroniza venceEl y diasRestantes inmediatamente al iniciar sesión
+      await db.collection('clientes').doc(usuarioActivo.id).set({
+        venceEl: new Date(usuarioActivo.expiryAt),
+        diasRestantes: diasRestantesPorCalendario()
+      }, { merge: true });
+
       iniciarSesion();
     } catch (e) {
       console.error(e); mostrarError("Error de red. Intenta de nuevo.");
@@ -258,10 +320,11 @@
 
   async function iniciarSesion() {
     document.getElementById("loginModal").classList.add("hidden");
-    pintarUserInfo();
 
-    setInterval(() => { pintarUserInfo(); if (getDiasRestantes() <= 3) showWarn(); }, 60 * 60 * 1000);
-    if (getDiasRestantes() <= 3) showWarn();
+    actualizarDiasRestantesUI();
+    if (uiTickTimer) clearInterval(uiTickTimer);
+    uiTickTimer = setInterval(actualizarDiasRestantesUI, 60 * 1000); // cada minuto
+    scheduleMidnightTick(); // recalcula exacto en medianoche
 
     await abrirSesion(usuarioActivo);
     cargarContenido();
@@ -272,6 +335,12 @@
     cerrarSesionActiva();
     sessionStorage.removeItem("usuario");
     usuarioActivo = null;
+
+    if (uiTickTimer) clearInterval(uiTickTimer);
+    if (midnightTickTimer) clearTimeout(midnightTickTimer);
+    uiTickTimer = null;
+    midnightTickTimer = null;
+
     document.getElementById("userInfo").textContent = "";
     document.getElementById("alertaMsg").classList.add("hidden");
     document.getElementById("loginModal").classList.remove("hidden");
@@ -352,7 +421,7 @@
     mostrarSecciones(todasLasPeliculas.filter(p => (p.titulo ?? "").toLowerCase().includes(texto)));
   }
 
-  // ===== Progreso en la nube + favoritos =====
+  // ===== Progreso + favoritos =====
   function progresoDocRef(contentId){ return db.collection('clientes').doc(usuarioActivo.id).collection('progreso').doc(contentId); }
   async function guardarProgresoCloud(contentId, data){ try { await progresoDocRef(contentId).set({ ...data, updatedAt: Date.now() }, { merge: true }); } catch(e){ console.warn(e); } }
   async function cargarProgresoCloud(contentId){ try { const d = await progresoDocRef(contentId).get(); return d.exists ? d.data() : null; } catch(e){ return null; } }
@@ -380,7 +449,6 @@
       .onSnapshot(snap => renderSeguirViendo(snap.docs.map(d=>({ contentId:d.id, ...d.data() }))));
   }
 
-  // === Carrusel Favoritos ===
   function renderFavoritos(items){
     const sec = document.getElementById('favoritosSection');
     const car = document.getElementById('favoritosCarousel');
@@ -408,7 +476,6 @@
     });
   }
 
-  // === Carrusel Seguir Viendo ===
   function renderSeguirViendo(items){
     const sec = document.getElementById('seguirViendoSection');
     const car = document.getElementById('seguirViendoCarousel');
@@ -456,10 +523,7 @@
     window.addEventListener("popstate", popListener, { once: true });
     document.addEventListener("keydown", escListener, { once: true });
   }
-  function closeTopModalOnce() {
-    const modals = document.querySelectorAll(".modal-layer");
-    if (modals.length) modals[modals.length - 1].remove();
-  }
+  function closeTopModalOnce() { const modals = document.querySelectorAll(".modal-layer"); if (modals.length) modals[modals.length - 1].remove(); }
 
   function abrirEpisodio(serieId, serieTitulo, tempNumero, epIdx, ep) {
     const contenido = ((ep.url ?? ep.iframe) ?? "").trim();
@@ -477,7 +541,6 @@
     const usar = crearIframeSeguro(src);
     modal.querySelector(".modal-content").appendChild(usar);
 
-    // progreso + sesión "viendo"
     if (serieId) {
       guardarProgresoCloud(serieId, { tipo:'serie', temporada: tempNumero, episodioIndex: epIdx, titulo: ep.titulo || '' });
       marcarViendoEpisodio(serieId, serieTitulo, tempNumero, epIdx, ep);
@@ -517,7 +580,6 @@
     }
     const acciones = modal.querySelector("#acciones");
 
-    // Favoritos
     const btnFav = document.createElement("button");
     btnFav.className = "bg-pink-600 hover:bg-pink-700 px-3 py-2 rounded font-semibold";
     btnFav.textContent = "☆ Agregar a favoritos";
@@ -525,7 +587,6 @@
     acciones.appendChild(btnFav);
     if (p.id) { isFavorito(p.id).then(v => { if (v) btnFav.textContent = "★ En favoritos"; }); }
 
-    // Continuar (progreso)
     if (p.id) {
       cargarProgresoCloud(p.id).then(prog => {
         if (!prog) return;
@@ -660,14 +721,26 @@
       const data = snap.data();
       if (!data.activo) throw new Error('inactivo');
       const fechaRegistro = data.fechaRegistro?.toDate?.() ?? new Date();
-      const expiryAt = fechaRegistro.getTime() + (data.meses * 30 * 24 * 60 * 60 * 1000);
-      if (expiryAt <= Date.now()) throw new Error('expirado');
+      const venceTS = data.venceEl?.toDate?.()?.getTime?.() || (fechaRegistro.getTime() + ((Number(data.meses)||0) * 30 * 24 * 60 * 60 * 1000));
+      if (venceTS <= Date.now()) throw new Error('expirado');
 
       const okPantallas = await puedeIniciarSesion({ id: snap.id, pantallas: data.pantallas });
-      if (!okPantallas) { sessionStorage.removeItem("usuario"); document.getElementById("loginModal").classList.remove("hidden"); mostrarError("Has alcanzado el límite de pantallas activas."); return; }
+      if (!okPantallas) {
+        sessionStorage.removeItem("usuario");
+        document.getElementById("loginModal").classList.remove("hidden");
+        mostrarError("Has alcanzado el límite de pantallas activas.");
+        return;
+      }
 
-      usuarioActivo = { id: snap.id, nombre: data.nombre ?? "Usuario", pantallas: data.pantallas ?? 0, expiryAt };
+      usuarioActivo = { id: snap.id, nombre: data.nombre ?? "Usuario", pantallas: data.pantallas ?? 0, expiryAt: venceTS };
       sessionStorage.setItem("usuario", JSON.stringify(usuarioActivo));
+
+      // Sincroniza al restaurar
+      await db.collection('clientes').doc(usuarioActivo.id).set({
+        venceEl: new Date(usuarioActivo.expiryAt),
+        diasRestantes: diasRestantesPorCalendario()
+      }, { merge: true });
+
       iniciarSesion();
     } catch {
       sessionStorage.removeItem("usuario");
